@@ -285,6 +285,7 @@ Return ONLY valid JSON (no markdown, no preamble, no extra text):
 
 def send_email(subject: str, body: str, is_html: bool = True):
     """Send email via Gmail SMTP."""
+    print(f"DEBUG: EMAIL_FROM={EMAIL_FROM}, EMAIL_PASSWORD={'***' if EMAIL_PASSWORD else 'NOT SET'}")
     if not EMAIL_FROM or not EMAIL_PASSWORD:
         print("⚠️  Email not configured. Set EMAIL_FROM and EMAIL_PASSWORD env vars.")
         return False
