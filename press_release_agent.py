@@ -552,6 +552,5 @@ if __name__ == "__main__":
     else:
         # Default: run scrape
         run_scrape_and_analyze()
-```
 
 Now paste this into your GitHub `press_release_agent.py` file and commit. Then test with **Run workflow** again!
