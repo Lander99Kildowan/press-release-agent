@@ -1,6 +1,4 @@
-Here's the complete updated file. Copy everything below and paste it into your GitHub repo's `press_release_agent.py`:
 
-```python
 #!/usr/bin/env python3
 """
 Press Release Agent for 20 Leading Asset Managers
