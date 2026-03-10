@@ -20,4 +20,4 @@ jobs:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-        run: python press_release_agent.py scrape
+       run: python press_release_agent.py digest
