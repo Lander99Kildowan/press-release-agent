@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """
 Press Release Agent for 20 Leading Asset Managers
