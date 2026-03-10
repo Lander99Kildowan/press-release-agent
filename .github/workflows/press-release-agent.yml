@@ -42,12 +42,4 @@ jobs:
         EMAIL_TO: ${{ secrets.EMAIL_TO }}
       run: python press_release_agent.py digest
 
-    - name: Persist database
-      uses: actions/upload-artifact@v3
-      with:
-        name: press-releases-db
-        path: press_releases.db
-        retention-days: 30
-```
-
-Then commit and try the workflow again.
+     
