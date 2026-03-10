@@ -1,3 +1,6 @@
+Here's the complete updated file. Copy everything below and paste it into your GitHub repo's `press_release_agent.py`:
+
+```python
 #!/usr/bin/env python3
 """
 Press Release Agent for 20 Leading Asset Managers
@@ -5,6 +8,7 @@ Press Release Agent for 20 Leading Asset Managers
 - Analyzes with Claude API
 - Sends 8am digest + real-time alerts via email
 - Tracks sent releases to avoid duplicates
+- Contextualized for Citywire's editorial needs
 """
 
 import os
@@ -77,8 +81,8 @@ PRESS_RELEASE_URLS = {
 DB_PATH = Path("press_releases.db")
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
-EMAIL_FROM = os.getenv("EMAIL_FROM")  # Set as env var
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")  # Gmail app password
+EMAIL_FROM = os.getenv("EMAIL_FROM")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_TO = os.getenv("EMAIL_TO", "your-email@citywire.co.uk")
 
 # ============================================================================
@@ -193,7 +197,6 @@ def scrape_press_releases(firm: str, url: str) -> list[dict]:
                 
                 # Normalize URL
                 if not link.startswith('http'):
-                    # Handle relative URLs
                     link = urljoin(url, link)
                 
                 # Filter: only keep if looks like a press release
@@ -213,7 +216,7 @@ def scrape_press_releases(firm: str, url: str) -> list[dict]:
                     })
                     seen_titles.add(title)
         
-        return releases[:15]  # Cap at 15 per firm
+        return releases[:15]
     except Exception as e:
         print(f"  ✗ Error scraping {firm}: {str(e)[:100]}")
         return []
@@ -225,22 +228,22 @@ def scrape_press_releases(firm: str, url: str) -> list[dict]:
 def analyze_release(client: anthropic.Anthropic, firm: str, title: str) -> dict:
     """
     Analyze press release with Claude.
-    Extract: entity types, sentiment, competitive relevance.
-    Focus on competitive intelligence value.
+    Extract: entity types, sentiment, Citywire business relevance.
     """
-    prompt = f"""You are a competitive intelligence analyst for a financial media company.
+    prompt = f"""You are a financial media analyst for Citywire, which serves wealth managers and asset managers.
 
-Analyze this asset manager press release:
+Analyze this press release from one of our key clients:
 Firm: {firm}
 Title: {title}
 
-Return ONLY valid JSON (no markdown, no preamble, no extra text):
+Return ONLY valid JSON (no markdown, no preamble):
 {{
     "entity_type": "one of: fund_launch, leadership_change, m_and_a, partnership, regulatory, esg_initiative, aum_milestone, technology, market_commentary",
     "sentiment": "positive, neutral, or negative",
-    "relevance_score": 1-10 (how important for competitive intelligence),
-    "key_insight": "one sentence summary of what matters",
-    "competitive_angle": "how this positions {firm} vs peers, or null if not applicable"
+    "relevance_score": 1-10 (news value for Citywire audience),
+    "key_insight": "one sentence summary",
+    "citywire_angle": "Why this matters for Citywire: story angle, trend, or business intel (or null if not relevant)",
+    "story_opportunity": "potential article/newsletter angle (or null)"
 }}"""
     
     try:
@@ -267,7 +270,8 @@ Return ONLY valid JSON (no markdown, no preamble, no extra text):
             "sentiment": "neutral",
             "relevance_score": 5,
             "key_insight": title[:100],
-            "competitive_angle": None
+            "citywire_angle": None,
+            "story_opportunity": None
         }
     except Exception as e:
         print(f"  ⚠️  Claude API error: {str(e)[:80]}")
@@ -276,7 +280,8 @@ Return ONLY valid JSON (no markdown, no preamble, no extra text):
             "sentiment": "neutral",
             "relevance_score": 5,
             "key_insight": title[:100],
-            "competitive_angle": None
+            "citywire_angle": None,
+            "story_opportunity": None
         }
 
 # ============================================================================
@@ -310,74 +315,99 @@ def send_email(subject: str, body: str, is_html: bool = True):
         print(f"✗ Email failed: {e}")
         return False
 
-def format_digest_email(releases: list[dict]) -> str:
-    """Format daily digest email."""
-    html = f"""
-<html>
-<head>
-    <style>
-        body {{ font-family: Arial, sans-serif; color: #333; }}
-        .header {{ background: #1a3a52; color: white; padding: 20px; }}
-        .release {{ margin: 15px 0; padding: 15px; border-left: 4px solid #0066cc; background: #f9f9f9; }}
-        .title {{ font-weight: bold; font-size: 16px; }}
-        .firm {{ color: #666; font-size: 12px; }}
-        .sentiment {{ display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; margin-top: 5px; }}
-        .positive {{ background: #d4edda; color: #155724; }}
-        .neutral {{ background: #e2e3e5; color: #383d41; }}
-        .negative {{ background: #f8d7da; color: #721c24; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>📰 Asset Manager Press Release Digest</h1>
-        <p>{datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')}</p>
-    </div>
-"""
-    
-    for rel in releases:
-        analysis = json.loads(rel['claude_analysis']) if isinstance(rel['claude_analysis'], str) else rel['claude_analysis']
-        sentiment_class = analysis['sentiment'].lower()
-        
-        html += f"""
-    <div class="release">
-        <div class="firm">{rel['firm']}</div>
-        <div class="title">{rel['title']}</div>
-        <div style="margin-top: 8px; color: #666; font-size: 14px;">{analysis['key_insight']}</div>
-        <div class="sentiment {sentiment_class}">
-            {analysis['sentiment'].capitalize()} | Type: {analysis['entity_type']} | Relevance: {analysis['relevance_score']}/10
-        </div>
-    </div>
-"""
-    
-    html += """
-    <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 12px; color: #999;">
-        <p>Real-time alerts sent as releases detected. Daily digest sent at 8:00 AM UTC.</p>
-    </div>
-</body>
-</html>
-"""
-    return html
-
 def format_alert_email(release: dict) -> str:
-    """Format real-time alert email."""
+    """Format real-time alert email with link and Citywire context."""
     analysis = json.loads(release['claude_analysis']) if isinstance(release['claude_analysis'], str) else release['claude_analysis']
     
     html = f"""
 <html>
 <head>
     <style>
-        body {{ font-family: Arial, sans-serif; }}
-        .alert {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; }}
+        body {{ font-family: Arial, sans-serif; color: #333; }}
+        .alert {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 4px; }}
+        .firm {{ color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }}
+        .title {{ font-size: 18px; font-weight: bold; margin: 10px 0; }}
+        .insight {{ margin: 10px 0; color: #555; }}
+        .citywire {{ background: #e3f2fd; padding: 10px; border-left: 3px solid #1976d2; margin: 10px 0; font-size: 14px; }}
+        .meta {{ font-size: 12px; color: #999; margin-top: 10px; }}
+        .link {{ display: inline-block; margin-top: 10px; padding: 8px 12px; background: #1976d2; color: white; text-decoration: none; border-radius: 3px; }}
     </style>
 </head>
 <body>
     <div class="alert">
-        <h2>🚨 Press Release Alert</h2>
-        <p><strong>{release['firm']}</strong></p>
-        <h3>{release['title']}</h3>
-        <p><strong>Insight:</strong> {analysis['key_insight']}</p>
-        <p><strong>Type:</strong> {analysis['entity_type']} | <strong>Sentiment:</strong> {analysis['sentiment']} | <strong>Relevance:</strong> {analysis['relevance_score']}/10</p>
-        {f'<p><strong>Competitive Context:</strong> {analysis["competitive_angle"]}</p>' if analysis.get('competitive_angle') else ''}
+        <div class="firm">{release['firm']}</div>
+        <div class="title">{release['title']}</div>
+        <div class="insight"><strong>Summary:</strong> {analysis['key_insight']}</div>
+        
+        <div class="meta">
+            <strong>Type:</strong> {analysis['entity_type']} | 
+            <strong>Sentiment:</strong> {analysis['sentiment']} | 
+            <strong>Relevance:</strong> {analysis['relevance_score']}/10
+        </div>
+        
+        {f'<div class="citywire"><strong>📰 Citywire Angle:</strong> {analysis["citywire_angle"]}</div>' if analysis.get('citywire_angle') else ''}
+        {f'<div class="citywire"><strong>💡 Story Opportunity:</strong> {analysis["story_opportunity"]}</div>' if analysis.get('story_opportunity') else ''}
+        
+        <a href="{release['url']}" class="link">Read Full Release →</a>
+    </div>
+</body>
+</html>
+"""
+    return html
+
+def format_digest_email(releases: list[dict]) -> str:
+    """Format daily digest email with links and Citywire context."""
+    html = f"""
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; color: #333; line-height: 1.6; }}
+        .header {{ background: #1a3a52; color: white; padding: 20px; border-radius: 4px; }}
+        .header h1 {{ margin: 0; font-size: 24px; }}
+        .header p {{ margin: 5px 0 0 0; color: #ccc; font-size: 14px; }}
+        .release {{ margin: 20px 0; padding: 15px; border-left: 4px solid #0066cc; background: #f9f9f9; border-radius: 4px; }}
+        .firm {{ color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }}
+        .title {{ font-weight: bold; font-size: 16px; margin: 8px 0; }}
+        .insight {{ color: #555; font-size: 14px; margin: 8px 0; }}
+        .citywire {{ background: #e3f2fd; padding: 10px; border-left: 3px solid #1976d2; margin: 10px 0; font-size: 13px; }}
+        .meta {{ font-size: 12px; color: #999; margin: 8px 0; }}
+        .link {{ display: inline-block; margin-top: 8px; padding: 6px 10px; background: #0066cc; color: white; text-decoration: none; border-radius: 3px; font-size: 12px; }}
+        .footer {{ margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 12px; color: #999; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📰 Client Press Release Digest</h1>
+        <p>{datetime.now().strftime('%A, %B %d, %Y')}</p>
+    </div>
+"""
+    
+    for rel in releases:
+        analysis = json.loads(rel['claude_analysis']) if isinstance(rel['claude_analysis'], str) else rel['claude_analysis']
+        
+        html += f"""
+    <div class="release">
+        <div class="firm">{rel['firm']}</div>
+        <div class="title">{rel['title']}</div>
+        <div class="insight">{analysis['key_insight']}</div>
+        
+        <div class="meta">
+            <strong>Type:</strong> {analysis['entity_type']} | 
+            <strong>Sentiment:</strong> {analysis['sentiment']} | 
+            <strong>Relevance:</strong> {analysis['relevance_score']}/10
+        </div>
+        
+        {f'<div class="citywire"><strong>📰 Citywire Angle:</strong> {analysis["citywire_angle"]}</div>' if analysis.get('citywire_angle') else ''}
+        {f'<div class="citywire"><strong>💡 Story Opportunity:</strong> {analysis["story_opportunity"]}</div>' if analysis.get('story_opportunity') else ''}
+        
+        <a href="{rel['url']}" class="link">Read Full Release →</a>
+    </div>
+"""
+    
+    html += """
+    <div class="footer">
+        <p>Real-time alerts sent as releases detected. Daily digest at 8:00 AM UTC.</p>
+        <p>Citywire AI Newsletter • Client Intelligence Monitor</p>
     </div>
 </body>
 </html>
@@ -442,6 +472,7 @@ def run_scrape_and_analyze():
                     format_alert_email({
                         'firm': firm,
                         'title': rel['title'],
+                        'url': rel['url'],
                         'claude_analysis': analysis_json
                     }),
                     is_html=True
@@ -487,7 +518,7 @@ def run_daily_digest():
         # Send digest
         html = format_digest_email(releases)
         send_email(
-            f"📰 Daily Asset Manager Press Release Digest - {datetime.now().strftime('%Y-%m-%d')}",
+            f"📰 Daily Client Press Release Digest - {datetime.now().strftime('%Y-%m-%d')}",
             html,
             is_html=True
         )
@@ -523,3 +554,6 @@ if __name__ == "__main__":
     else:
         # Default: run scrape
         run_scrape_and_analyze()
+```
+
+Now paste this into your GitHub `press_release_agent.py` file and commit. Then test with **Run workflow** again!
