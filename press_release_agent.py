@@ -435,7 +435,7 @@ def run_scrape_and_analyze():
             })
             
             # Send real-time alert if high relevance
-            if analysis['relevance_score'] >= 7:
+            if analysis['relevance_score'] >= 1:
                 print(f"  📧 Sending real-time alert...")
                 send_email(
                     f"[ALERT] {firm}: {rel['title'][:70]}",
