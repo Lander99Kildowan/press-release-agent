@@ -1,23 +1,46 @@
 name: Press Release Agent
+
 on:
-  schedule:
-    - cron: '*/30 * * * *'
-    - cron: '0 8 * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:  # Manual trigger only — schedules disabled
+
 jobs:
   agent:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: pip install requests beautifulsoup4 anthropic
-      - name: Run scraper
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-        run: python press_release_agent.py scrape
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4 anthropic
+    
+    - name: Run scraper (every 30 min)
+      if: github.event.schedule != '0 8 * * *'
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_TO: ${{ secrets.EMAIL_TO }}
+      run: python press_release_agent.py scrape
+    
+    - name: Run daily digest (8am UTC)
+      if: github.event.schedule == '0 8 * * *'
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_TO: ${{ secrets.EMAIL_TO }}
+      run: python press_release_agent.py digest
+    
+    - name: Persist database
+      uses: actions/upload-artifact@v3
+      with:
+        name: press-releases-db
+        path: press_releases.db
+        retention-days: 30
